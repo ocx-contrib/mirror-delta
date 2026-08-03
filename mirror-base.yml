@@ -1,0 +1,126 @@
+# Shared base for every spec in this repository (delta, the git diff viewer).
+#
+# NOT a spec: it has no name/target/source and is never loaded on its own.
+# Everything a package owns — name, target, source, assets, asset_type,
+# bin_scan, metadata, catalog, tests, versions, announce, annotations — stays
+# in that package's own mirror.yml.
+#
+# ⚠️ `extends:` is a SHALLOW merge of top-level keys. A spec that sets a key
+# below replaces that block OUTRIGHT — there is no per-key merge. `platforms:`
+# is where this bites: it carries BOTH the runner matrix and the container
+# legs, so a child that restates it to tweak one runner silently drops every
+# `containers:` entry. Nothing reds — the legs simply stop existing, and every
+# os.features claim in that spec goes back to being merely asserted. This repo
+# is single-package, so `platforms:` lives HERE and delta/mirror.yml does not
+# restate it at all — the trap is structurally eliminated rather than
+# navigated.
+
+skip_prereleases: true
+cascade: true
+
+# A cascade tag (`latest`, `X`, `X.Y`) re-points on every re-publish; without a
+# build segment the new manifest reuses the bare version tag and orphans the
+# prior digest for registry GC, breaking any `@sha256:` pin in a consumer's
+# ocx.lock. The `none` exception applies only where upstream versions ALREADY
+# carry semver build metadata (double-stamping is rejected and silently empties
+# the mirror) — delta tags bare semver (`0.19.2`), so it does not apply here.
+build_timestamp: date
+
+verify:
+  # Per-ASSET digests taken from the release API, so each download is bound to
+  # the release it was discovered in. delta's asset filenames DO carry the
+  # version (`delta-0.19.2-x86_64-unknown-linux-musl.tar.gz`), but that only
+  # makes the name unique — it is not an integrity claim.
+  github_asset_digest: true
+
+concurrency:
+  # Assets are ~3 MB gzipped, unpacking to a ~6-7 MB single binary plus a
+  # LICENSE and a README. Cheap; the fleet default parallelism is fine.
+  max_downloads: 8
+  max_bundles: 4
+  max_pushes: 2
+  rate_limit_ms: 100
+  max_retries: 3
+  compression_threads: 0
+
+# ─── Platform matrix ────────────────────────────────────────────────────────
+#
+# `os.features` states what an artifact REQUIRES OF THE HOST — it is not a
+# label for how it was built, and a musl target TRIPLE is not a musl
+# requirement. Measured on 0.19.2 (the commands and their output are recorded
+# above delta/mirror.yml's `assets:` block); delta's two Linux arches are
+# ASYMMETRIC, because upstream ships a musl build for x86_64 only:
+#
+#   linux/amd64  — upstream ships BOTH -gnu and -musl. The musl build is
+#                  static-pie: `readelf -l` reports 0 INTERP segments and
+#                  `readelf -d` no NEEDED. It requires nothing of the host, so
+#                  the key is BARE and the musl asset is the one carried.
+#                  `+libc.musl` would be a false requirement that hid the
+#                  package from every glibc host it in fact runs on.
+#   linux/arm64  — upstream ships NO aarch64 musl asset. The only aarch64 Linux
+#                  build is the gnu one, carrying PT_INTERP
+#                  /lib/ld-linux-aarch64.so.1 and NEEDED libc.so.6, so its key
+#                  MUST be `+libc.glibc` (quoted — the `+` needs it in YAML).
+#
+# Container legs are what turn those claims into evidence, and they follow the
+# KEYS rather than the arches:
+#   bare linux/amd64        → ubuntu + alpine + fedora. The ALPINE leg is the
+#                             only proof the universal claim is honest.
+#   linux/arm64+libc.glibc  → ubuntu + fedora, and NO alpine. The binary
+#                             genuinely cannot load under musl, and the
+#                             renderer rejects an alpine leg under a glibc key
+#                             at exit 65.
+#
+# ─── Deliberate platform exclusions (upstream gaps, not staging) ────────────
+#
+# OCX has exactly six platform keys and this mirror declares FOUR. The two it
+# omits are omitted because upstream ships nothing to put there — verified
+# against every in-range release (0.19.1, 0.19.2), not assumed:
+#
+#   darwin/amd64  — EXCLUDED. Upstream ships no `x86_64-apple-darwin` asset at
+#                   0.19.1 or 0.19.2; `aarch64-apple-darwin` is the only macOS
+#                   asset in either. The Intel build DID exist through 0.18.2
+#                   (`delta-0.18.2-x86_64-apple-darwin.tar.gz`) and was dropped
+#                   at the 0.19 train. Declaring the key would resolve zero
+#                   assets — silently skipped, no error — while still booting a
+#                   macos-14 runner that greens having tested nothing.
+#   windows/arm64 — EXCLUDED. `x86_64-pc-windows-msvc.zip` is the only Windows
+#                   asset upstream has ever published for this train; there is
+#                   no aarch64 (or i686) Windows build to carry.
+#
+# Upstream's remaining assets have no OCX platform key at all and are out of
+# scope silently: `arm-unknown-linux-gnueabihf` (armv7) and
+# `i686-unknown-linux-gnu` — the ocx Architecture enum is amd64 + arm64 only.
+platforms:
+  linux/amd64:
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "alpine:3.20",  shell: sh }
+      - { image: "fedora:40",    shell: bash }
+  "linux/arm64+libc.glibc":
+    # arm64 container legs run natively — no qemu — so the runner arch must
+    # match the platform or the renderer reds the leg up front.
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  # ── Pass 2 (darwin) ──────────────────────────────────────────────────────
+  # Staged: a declared platform whose `assets:` key is also commented does NOT
+  # quietly self-skip — it boots a real macos-14 runner and reports SUCCESS
+  # having tested nothing. So BOTH halves stay commented until this pass.
+  # darwin/arm64:
+  #   runner: macos-14
+  #   shell: bash
+  # ── Pass 3 (windows) ─────────────────────────────────────────────────────
+  # windows/amd64:
+  #   runner: windows-latest
+  #   shell: pwsh
+  #
+  # No `containers:` on darwin or windows — those runners have no Linux
+  # container engine, and the key is rejected at spec load.
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"  # pinged in-message on failures

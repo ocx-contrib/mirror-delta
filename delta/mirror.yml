@@ -1,0 +1,179 @@
+# ⚠ `extends:` is a SHALLOW merge of TOP-LEVEL KEYS. Setting a key here
+# REPLACES the base's block outright — there is no per-key merge. `platforms:`
+# is deliberately NOT restated below: it carries the container legs that make
+# this spec's Linux keys honest, and this repo is single-package, so the base's
+# block is already this package's measured matrix.
+extends: ../mirror-base.yml
+
+name: delta
+
+# Logical index package `delta/delta` at the physical path
+# `ghcr.io/ocx-contrib/delta/delta` — slash segments, never hyphen-flattened.
+# Two segments always; `dandavison` is a personal handle rather than a vendor,
+# so the tool names itself. The first segment must be this repo's own GitHub
+# owner: GITHUB_TOKEN only authorises packages owned by the repository the
+# workflow runs in.
+#
+# NOTE the crate is published as `git-delta` (the name `delta` was taken on
+# crates.io) and upstream's .deb assets are named for the crate — but the
+# project, the archives and the executable are all `delta`.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/delta/delta
+
+source:
+  type: github_release
+  owner: dandavison
+  repo: delta
+  # delta tags are BARE semver — no "v" prefix (e.g. "0.19.2").
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+# ─── libc gate (Phase 3.5) — the evidence, not the conclusion ───────────────
+#
+# Measured on 0.19.2, one artifact per (os, arch) declared. The two Linux
+# arches are ASYMMETRIC and the asset names never decided it — PT_INTERP did:
+#
+#   $ file delta-0.19.2-x86_64-unknown-linux-musl/delta
+#   ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked,
+#   stripped
+#   $ readelf -l … | grep -c INTERP   → 0
+#   $ readelf -d … | grep NEEDED      → (none)
+#
+#   $ file delta-0.19.2-aarch64-unknown-linux-gnu/delta
+#   ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically
+#   linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0
+#   $ readelf -l … | grep -c INTERP   → 1
+#   $ readelf -d … | grep NEEDED      → libgcc_s.so.1, libpthread.so.0,
+#                                        libm.so.6, libdl.so.2, libc.so.6,
+#                                        ld-linux-aarch64.so.1
+#   $ readelf -V … | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1  → GLIBC_2.18
+#
+# So: amd64 carries the MUSL asset under a BARE key (static — it requires
+# nothing of the host, and `+libc.musl` would be a false requirement hiding it
+# from every glibc host it runs on); arm64 carries the GNU asset under
+# `linux/arm64+libc.glibc`, because upstream ships no aarch64 musl build at
+# all. Container legs (ubuntu+alpine+fedora on the bare key, ubuntu+fedora and
+# NO alpine on the glibc key) live in ../mirror-base.yml and are what turn
+# those claims into evidence.
+#
+# The amd64 `-gnu` asset exists and is deliberately NOT carried as a second
+# `linux/amd64+libc.glibc` key. Publishing it beside the static build is legal
+# and resolves correctly by specificity scoring, but it only buys something
+# where musl's libc changes behaviour a user can reach — canonically DNS/NSS
+# resolution. delta renders a diff read from stdin and opens no socket. (For
+# the record, that gnu build needs GLIBC_2.34 — a much higher floor than the
+# aarch64 one's GLIBC_2.18, which is exactly why the arches are measured
+# separately.)
+#
+# ─── Scope (verified against BOTH in-range releases, 0.19.1 and 0.19.2) ─────
+#
+# Upstream publishes twelve assets per release; this mirror carries FOUR of
+# them. The other eight, every one accounted for:
+#
+#   delta-<V>-x86_64-unknown-linux-gnu.tar.gz     — the glibc amd64 build,
+#                                                   excluded for the reason
+#                                                   above (static musl covers).
+#   delta-<V>-arm-unknown-linux-gnueabihf.tar.gz  — armv7. No OCX platform key
+#   delta-<V>-i686-unknown-linux-gnu.tar.gz       — i686.  exists: the ocx
+#                                                   Architecture enum is
+#                                                   amd64 + arm64 ONLY.
+#   git-delta_<V>_{amd64,arm64,armhf,i386}.deb    — Debian sidecars, named for
+#   git-delta-musl_<V>_amd64.deb                    the CRATE (`git-delta`).
+#                                                   The patterns below anchor
+#                                                   `^delta-` so a `git-delta…`
+#                                                   name can never match one.
+#
+# NOT declared, because upstream ships nothing to put there — the evidence, per
+# the exclusions comment in ../mirror-base.yml:
+#   darwin/amd64  — no `x86_64-apple-darwin` asset at 0.19.1 or 0.19.2. It
+#                   existed through 0.18.2 and was dropped at the 0.19 train.
+#   windows/arm64 — `x86_64-pc-windows-msvc.zip` is the only Windows asset.
+#
+# ─── The version floor is a KNOWN-BAD-RELEASE floor ─────────────────────────
+#
+# `versions.min: 0.19.1` is NOT "the third-newest tag". 0.19.0 published FOUR
+# assets where every healthy release of this repo publishes twelve or thirteen
+# — only aarch64-darwin, x86_64-windows-msvc, x86_64-linux-musl and one .deb —
+# a CI failure on that tag that was never backfilled. Three of the four keys
+# below would resolve ZERO assets there, and a zero-match is SILENTLY SKIPPED
+# rather than an error, so including it would ship a version with a missing
+# linux/arm64. This repo has form: 0.16.4 shipped 5 assets against the same
+# ~13 baseline. Measured asset counts, newest first: 0.19.2→12, 0.19.1→12,
+# 0.19.0→4, 0.18.2→13, 0.18.1→13, 0.18.0→13, 0.17.0→13, 0.16.5→13, 0.16.4→5.
+#
+# Resolution verified BOTH ways on BOTH in-range releases: every pattern below
+# matches EXACTLY one asset in each, and every asset upstream ships is either
+# matched or named above.
+assets:
+  linux/amd64:
+    - "^delta-\\d+\\.\\d+\\.\\d+-x86_64-unknown-linux-musl\\.tar\\.gz$"
+  "linux/arm64+libc.glibc":
+    - "^delta-\\d+\\.\\d+\\.\\d+-aarch64-unknown-linux-gnu\\.tar\\.gz$"
+  # ── Pass 2 (darwin) — uncomment together with the platforms: key ─────────
+  # darwin/arm64:
+  #   - "^delta-\\d+\\.\\d+\\.\\d+-aarch64-apple-darwin\\.tar\\.gz$"
+  # ── Pass 3 (windows) ─────────────────────────────────────────────────────
+  # windows/amd64:
+  #   - "^delta-\\d+\\.\\d+\\.\\d+-x86_64-pc-windows-msvc\\.zip$"
+
+# Every archive — tarball and zip alike — carries ONE wrapper directory named
+# after the asset (`delta-0.19.2-x86_64-unknown-linux-musl/`) holding exactly
+# three entries: `delta` (`delta.exe` in the zip) mode 0755, `LICENSE` and
+# `README.md`. There is no `bin/` subdirectory. Verified with `tar tvzf` /
+# `unzip -l` on 0.19.2.
+#
+# strip_components 1 is FORCED, not chosen: the wrapper directory's name embeds
+# both the VERSION and the target TRIPLE, so keeping it (strip 0) would need a
+# PATH value that changes with every release and differs per platform — not
+# expressible in metadata.json. Stripping it puts `delta` at the content root
+# and one metadata.json (PATH = ${installPath}) serves every platform.
+asset_type:
+  type: archive
+  strip_components: 1
+
+# `off` — FORCED by the layout above, not chosen. The scan only inspects an
+# interface-visible `${installPath}/<dir>` PATH entry, and after the strip
+# there is no subdirectory to point one at, so `auto` and `verify` both fail
+# spec load at exit 65:
+#
+#   bin_scan is enabled but metadata.json declares no interface-visible
+#   ${installPath}/<dir> PATH entry — the verification would inspect no file
+#   and pass green whatever the archive contains.
+#
+# The `binaries` list in metadata.json is therefore hand-maintained, exactly as
+# that error directs. It is short and stable: `delta` is the archive's only
+# executable on every platform, beside a LICENSE and a README. Quoted so no
+# YAML 1.1 reader folds the bare word into boolean `false`.
+bin_scan: "off"
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  # See "The version floor is a KNOWN-BAD-RELEASE floor" above — 0.19.0 is a
+  # broken release, not merely an old one.
+  min: "0.19.1"
+  new_per_run: 5
+  # Never minute 0 — the fleet staggers polls to avoid a thundering herd.
+  poll_interval: "17 */6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and
+  # `catalog.logo` above, which resolve against this spec's own directory.
+  - name: smoke
+    script: delta/tests/smoke.star
+
+annotations:
+  # From the Phase 1.5 license gate:
+  #   $ gh api repos/dandavison/delta/license --jq '.license.spdx_id'
+  #   MIT
+  org.opencontainers.image.licenses: "MIT"
+
+announce:
+  # Spelled out, not derived from target.repository — the logical name and the
+  # physical path are related by convention only.
+  package: delta/delta
+  fork: ocx-contrib/index
