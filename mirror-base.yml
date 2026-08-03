@@ -105,13 +105,9 @@ platforms:
     containers:
       - { image: "ubuntu:24.04", shell: bash }
       - { image: "fedora:40",    shell: bash }
-  # ── Pass 2 (darwin) ──────────────────────────────────────────────────────
-  # Staged: a declared platform whose `assets:` key is also commented does NOT
-  # quietly self-skip — it boots a real macos-14 runner and reports SUCCESS
-  # having tested nothing. So BOTH halves stay commented until this pass.
-  # darwin/arm64:
-  #   runner: macos-14
-  #   shell: bash
+  darwin/arm64:
+    runner: macos-14
+    shell: bash
   # ── Pass 3 (windows) ─────────────────────────────────────────────────────
   # windows/amd64:
   #   runner: windows-latest

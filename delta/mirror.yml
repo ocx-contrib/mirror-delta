@@ -109,9 +109,8 @@ assets:
     - "^delta-\\d+\\.\\d+\\.\\d+-x86_64-unknown-linux-musl\\.tar\\.gz$"
   "linux/arm64+libc.glibc":
     - "^delta-\\d+\\.\\d+\\.\\d+-aarch64-unknown-linux-gnu\\.tar\\.gz$"
-  # ── Pass 2 (darwin) — uncomment together with the platforms: key ─────────
-  # darwin/arm64:
-  #   - "^delta-\\d+\\.\\d+\\.\\d+-aarch64-apple-darwin\\.tar\\.gz$"
+  darwin/arm64:
+    - "^delta-\\d+\\.\\d+\\.\\d+-aarch64-apple-darwin\\.tar\\.gz$"
   # ── Pass 3 (windows) ─────────────────────────────────────────────────────
   # windows/amd64:
   #   - "^delta-\\d+\\.\\d+\\.\\d+-x86_64-pc-windows-msvc\\.zip$"
