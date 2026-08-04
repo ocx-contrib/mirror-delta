@@ -29,17 +29,6 @@ into it, or hand it two files to compare.
 The project is `delta` and the executable is `delta`; only the Rust crate is
 published as `git-delta`, because `delta` was taken on crates.io.
 
-## Install with ocx
-
-```sh
-ocx install ocx.sh/delta/delta
-```
-
-```sh
-# or pin a specific version
-ocx install ocx.sh/delta/delta:0.19.2
-```
-
 ## Links
 
 - [delta manual](https://dandavison.github.io/delta/)
