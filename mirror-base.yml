@@ -83,7 +83,7 @@ concurrency:
 #                   (`delta-0.18.2-x86_64-apple-darwin.tar.gz`) and was dropped
 #                   at the 0.19 train. Declaring the key would resolve zero
 #                   assets — silently skipped, no error — while still booting a
-#                   macos-14 runner that greens having tested nothing.
+#                   macos-15 runner that greens having tested nothing.
 #   windows/arm64 — EXCLUDED. `x86_64-pc-windows-msvc.zip` is the only Windows
 #                   asset upstream has ever published for this train; there is
 #                   no aarch64 (or i686) Windows build to carry.
@@ -106,7 +106,7 @@ platforms:
       - { image: "ubuntu:24.04", shell: bash }
       - { image: "fedora:40",    shell: bash }
   darwin/arm64:
-    runner: macos-14
+    runner: macos-15
     shell: bash
   windows/amd64:
     runner: windows-latest
